@@ -88,16 +88,16 @@ void Transform1D(Complex* h, int N)
   for(int i=0; i<N; i++){
     int rev_i = ReverseBits(i);
     if(rev_i < i){
-      printf("%d swapped with %d\n", i, rev_i);
       Complex temp = h[i];
       h[i] = h[rev_i];
       h[rev_i] = temp;
     }
   }
  
-  for(int pt=2; pt <= N; pt *= 2)                 // Number of points in transform
-    for(int j=0; j < (N/*/pt*/); j/*++*/+=pt)     // Something
-      for(int k=0; k < (pt/2); k++){              // Something else
+ /* Danielson-Lanczos Algorithm */
+  for(int pt=2; pt <= N; pt*=2)
+    for(int j=0; j < (N); j+=pt)
+      for(int k=0; k < (pt/2); k++){
         int offset = pt/2;
         Complex oldfirst = h[j+k];
         Complex oldsecond = h[j+k+offset];
@@ -123,9 +123,15 @@ void* Transform2DTHread(void* v)
   //pthread_mutex_lock(&elementCountMutex);
   //test_variable++;
   //pthread_mutex_unlock(&elementCountMutex);
+ 
+  for(int row=startingRow; row < (startingRow + rowsPerThread); row++){
+    Transform1D(&ImageData[row * ImageWidth], N);
+    cout<<". ";
+  }
+  cout<<endl<<endl;
 
   pthread_mutex_lock(&printfMutex);
-  printf("  Thread %2ld: Just chillin' \n", thread_id);
+  printf("  Thread %2ld: My chunk is done!' \n", thread_id);
   pthread_mutex_unlock(&printfMutex);
 
   pthread_mutex_lock(&startCountMutex);
@@ -157,11 +163,11 @@ void Transform2D(const char* inputFN)
   cout<<"w = "<<ImageWidth<<" and h = "<<ImageHeight<<endl;
 
   // All mutex and condition variables must be "initialized"
-  //pthread_mutex_init(&exitMutex,0);
-  //pthread_mutex_init(&startCountMutex,0);
-  //pthread_mutex_init(&elementCountMutex,0);
-  //pthread_mutex_init(&printfMutex,0);
-  //pthread_cond_init(&exitCond, 0);
+  pthread_mutex_init(&exitMutex,0);
+  pthread_mutex_init(&startCountMutex,0);
+  pthread_mutex_init(&elementCountMutex,0);
+  pthread_mutex_init(&printfMutex,0);
+  pthread_cond_init(&exitCond, 0);
 
   // Create the global pointer to the image array data
   ImageData = image.GetImageData();
@@ -169,31 +175,33 @@ void Transform2D(const char* inputFN)
   // Precompute W values
   precomputeW();
 
-  /* Perform the 1-D transform on the first row */
-  Transform1D(&ImageData[0], N);
-
-  //// Hold the exit mutex until waiting for exitCond condition
-  //pthread_mutex_lock(&exitMutex);
-
-  //startCount = N_THREADS;
-  //
-  //pthread_t threads[N_THREADS];
-
-  //int i = 0;
-
-  //// Create 16 threads
-  //for(i=0; i < N_THREADS; ++i){
-  //  pthread_create(&threads[i], 0, Transform2DTHread, (void *)i);
+  /* Perform the 1-D transform on all rows */
+  //for(int row=0; row < ImageWidth; row++){
+  //  Transform1D(&ImageData[row * ImageWidth], N);
+  //  cout<<". ";
   //}
+  //cout<<endl<<endl;
 
-  //// Wait for all threads complete
-  //pthread_cond_wait(&exitCond, &exitMutex);
+  // Hold the exit mutex until waiting for exitCond condition
+  pthread_mutex_lock(&exitMutex);
 
-  //// Write the transformed data
-  //printf("\n  Final result: test_variable = %d\n", test_variable);
-  cout<<"Here!"<<endl;
+  startCount = N_THREADS;
+  
+  pthread_t threads[N_THREADS];
+
+  int i = 0;
+
+  // Create 16 threads
+  for(i=0; i < N_THREADS; ++i){
+    pthread_create(&threads[i], 0, Transform2DTHread, (void *)i);
+  }
+
+  // Wait for all threads complete
+  pthread_cond_wait(&exitCond, &exitMutex);
+
+  // Write the transformed data
   image.SaveImageData("Myer1d.txt", ImageData, ImageWidth, ImageHeight);
-  cout<<"First line 1-D transform of Tower.txt done"<<endl;
+  cout<<"  1-D transform of Tower.txt done"<<endl;
 
 }
 
