@@ -148,7 +148,6 @@ void* Transform2DTHread(void* v)
   {
     pthread_mutex_unlock(&startCountMutex);
   }
-
   return 0; 
 }
 
@@ -200,8 +199,45 @@ void Transform2D(const char* inputFN)
   pthread_cond_wait(&exitCond, &exitMutex);
 
   // Write the transformed data
-  image.SaveImageData("Myer1d.txt", ImageData, ImageWidth, ImageHeight);
+  image.SaveImageData("MyAfter1d.txt", ImageData, ImageWidth, ImageHeight);
   cout<<"  1-D transform of Tower.txt done"<<endl;
+
+  /* Transpose the 1-D transformed image */
+  for(int row=0; row<N; row++)
+    for(int column=0; column<N; column++){
+      if(column < row){
+        Complex temp; temp = ImageData[row*N + column];
+        ImageData[row*N + column] = ImageData[column*N + row];
+        ImageData[column*N + row] = temp;
+      }
+    }
+  cout<<"  Transpose done"<<endl;
+  
+  startCount = N_THREADS;
+  /* Do 1-D transform again */
+  //pthread_mutex_lock(&exitMutex);
+  // Create 16 threads
+  for(i=0; i < N_THREADS; ++i){
+    pthread_create(&threads[i], 0, Transform2DTHread, (void *)i);
+  }
+
+  // Wait for all threads complete
+  pthread_cond_wait(&exitCond, &exitMutex);
+
+  /* Transpose the 1-D transformed image */
+  for(int row=0; row<N; row++)
+    for(int column=0; column<N; column++){
+      if(column < row){
+        Complex temp; temp = ImageData[row*N + column];
+        ImageData[row*N + column] = ImageData[column*N + row];
+        ImageData[column*N + row] = temp;
+      }
+    }
+  cout<<"  Transpose done"<<endl;
+
+  // Write the transformed data
+  image.SaveImageData("Tower-DFT2D.txt", ImageData, ImageWidth, ImageHeight);
+  cout<<"  2-D transform of Tower.txt done"<<endl;
 
 }
 
