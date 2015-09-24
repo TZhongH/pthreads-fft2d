@@ -68,14 +68,14 @@ unsigned ReverseBits(unsigned v)
 // Call MyBarrier_Init once in main
 void MyBarrier_Init()// you will likely need some parameters)
 {
-  count = N_THREADS;
+  count = N_THREADS + 1;
 
   // Initialize the mutex used for MyBarrier()
   pthread_mutex_init(&countMutex, 0);
   
   // Create and initialize the localSense array, 1 entry per thread
-  localSense = new bool[N_THREADS];
-  for (int i = 0; i < N_THREADS; ++i) localSense[i] = true;
+  localSense = new bool[N_THREADS + 1];
+  for (int i = 0; i < (N_THREADS + 1); ++i) localSense[i] = true;
 
   // Initialize global sense
   globalSense = true;
@@ -97,7 +97,7 @@ void MyBarrier(unsigned threadId) // Again likely need parameters
   localSense[threadId] = !localSense[threadId]; // Toggle private sense variable
   if (FetchAndDecrementCount() == 1)
   { // All threads here, reset count and toggle global sense
-    count = N_THREADS;
+    count = N_THREADS+1;
     globalSense = localSense[threadId];
   }
   else
@@ -179,20 +179,22 @@ void* Transform2DTHread(void* v)
   printf("  Thread %2ld: My chunk is done!' \n", thread_id);
   pthread_mutex_unlock(&printfMutex);
 
-  pthread_mutex_lock(&startCountMutex);
-  startCount--;
+  // /* -------- */  pthread_mutex_lock(&startCountMutex);
+  // /* -------- */  startCount--;
 
-  if (startCount == 0)
-  { // Last to exit, notify calling function
-    pthread_mutex_unlock(&startCountMutex);
-    pthread_mutex_lock(&exitMutex);
-    pthread_cond_signal(&exitCond);
-    pthread_mutex_unlock(&exitMutex);
-  }
-  else
-  {
-    pthread_mutex_unlock(&startCountMutex);
-  }
+  // /* -------- */ if (startCount == 0)
+  // /* -------- */ { // Last to exit, notify calling function
+  // /* -------- */   pthread_mutex_unlock(&startCountMutex);
+  // /* -------- */   pthread_mutex_lock(&exitMutex);
+  // /* -------- */   pthread_cond_signal(&exitCond);
+  // /* -------- */   pthread_mutex_unlock(&exitMutex);
+  // /* -------- */ }
+  // /* -------- */ else
+  // /* -------- */ {
+  // /* -------- */   pthread_mutex_unlock(&startCountMutex);
+  // /* -------- */ }
+  MyBarrier(thread_id);
+
   return 0; 
 }
 
@@ -227,7 +229,9 @@ void Transform2D(const char* inputFN)
   //cout<<endl<<endl;
 
   // Hold the exit mutex until waiting for exitCond condition
-  pthread_mutex_lock(&exitMutex);
+  // /* -------- */ pthread_mutex_lock(&exitMutex);
+  /* Init the Barrier stuff */
+  MyBarrier_Init();
 
   startCount = N_THREADS;
   
@@ -241,11 +245,12 @@ void Transform2D(const char* inputFN)
   }
 
   // Wait for all threads complete
-  pthread_cond_wait(&exitCond, &exitMutex);
+  // /* -------- */  pthread_cond_wait(&exitCond, &exitMutex);
 
   // Write the transformed data
   image.SaveImageData("MyAfter1d.txt", ImageData, ImageWidth, ImageHeight);
   cout<<"  1-D transform of Tower.txt done"<<endl;
+  MyBarrier(N_THREADS);
 
   /* Transpose the 1-D transformed image */
   for(int row=0; row<N; row++)
@@ -258,7 +263,7 @@ void Transform2D(const char* inputFN)
     }
   cout<<"  Transpose done"<<endl;
   
-  startCount = N_THREADS;
+  // /* -------- */  startCount = N_THREADS;
   /* Do 1-D transform again */
   // Create 16 threads
   for(i=0; i < N_THREADS; ++i){
@@ -266,7 +271,8 @@ void Transform2D(const char* inputFN)
   }
 
   // Wait for all threads complete
-  pthread_cond_wait(&exitCond, &exitMutex);
+  // /* -------- */  pthread_cond_wait(&exitCond, &exitMutex);
+  MyBarrier(N_THREADS);
 
   /* Transpose the 1-D transformed image */
   for(int row=0; row<N; row++)
@@ -291,7 +297,7 @@ void Transform2D(const char* inputFN)
   // Precompute W values
   precomputeW(INVERSE);
   inverse = INVERSE;
-  startCount = N_THREADS;
+  // /* -------- */  startCount = N_THREADS;
   /* Do 1-D transform again */
   // Create 16 threads
   for(i=0; i < N_THREADS; ++i){
@@ -299,7 +305,8 @@ void Transform2D(const char* inputFN)
   }
 
   // Wait for all threads complete
-  pthread_cond_wait(&exitCond, &exitMutex);
+  // /* -------- */  pthread_cond_wait(&exitCond, &exitMutex);
+  MyBarrier(N_THREADS);
 
   cout<<"Here!"<<endl;
   
@@ -314,7 +321,7 @@ void Transform2D(const char* inputFN)
     }
   cout<<"  Transpose done"<<endl;
 
-  startCount = N_THREADS;
+  // /* -------- */  startCount = N_THREADS;
   /* Do 1-D transform again */
   // Create 16 threads
   for(i=0; i < N_THREADS; ++i){
@@ -322,7 +329,8 @@ void Transform2D(const char* inputFN)
   }
 
   // Wait for all threads complete
-  pthread_cond_wait(&exitCond, &exitMutex);
+  // /* -------- */  pthread_cond_wait(&exitCond, &exitMutex);
+  MyBarrier(N_THREADS);
 
   /* Transpose the 1-D transformed image */
   for(int row=0; row<N; row++)
