@@ -195,6 +195,11 @@ void* Transform2DTHread(void* v)
   // /* -------- */ }
 
   MyBarrier(thread_id);
+  if(thread_id == 5){
+    pthread_mutex_lock(&exitMutex);
+    pthread_cond_signal(&exitCond);
+    pthread_mutex_unlock(&exitMutex);
+  }
 
   return 0; 
 }
@@ -230,7 +235,7 @@ void Transform2D(const char* inputFN)
   //cout<<endl<<endl;
 
   // Hold the exit mutex until waiting for exitCond condition
-  // /* -------- */ pthread_mutex_lock(&exitMutex);
+  pthread_mutex_lock(&exitMutex);
   /* Init the Barrier stuff */
   MyBarrier_Init();
 
@@ -272,8 +277,8 @@ void Transform2D(const char* inputFN)
   }
 
   // Wait for all threads complete
-  // /* -------- */  pthread_cond_wait(&exitCond, &exitMutex);
   MyBarrier(N_THREADS);
+  pthread_cond_wait(&exitCond, &exitMutex);
 
   /* Transpose the 1-D transformed image */
   for(int row=0; row<N; row++)
@@ -306,8 +311,8 @@ void Transform2D(const char* inputFN)
   }
 
   // Wait for all threads complete
-  // /* -------- */  pthread_cond_wait(&exitCond, &exitMutex);
   MyBarrier(N_THREADS);
+  pthread_cond_wait(&exitCond, &exitMutex);
 
   cout<<"Here!"<<endl;
   
@@ -330,8 +335,8 @@ void Transform2D(const char* inputFN)
   }
 
   // Wait for all threads complete
-  // /* -------- */  pthread_cond_wait(&exitCond, &exitMutex);
   MyBarrier(N_THREADS);
+  pthread_cond_wait(&exitCond, &exitMutex);
 
   /* Transpose the 1-D transformed image */
   for(int row=0; row<N; row++)
