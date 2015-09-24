@@ -39,6 +39,12 @@ int             startCount;         // To test how pThreads works
 
 Complex* W;     // Twiddle bits
 
+/* Variables for our own barrier */
+int count;        //Number of threads presently in the barrier
+pthread_mutex_t countMutex;
+bool* localSense; // We will create an array of bools, one per thread
+bool globalSense; // Global sense
+
 using namespace std;
 
 // Function to reverse bits in an unsigned integer
@@ -59,16 +65,45 @@ unsigned ReverseBits(unsigned v)
 }
 
 // GRAD Students implement the following 2 functions.
-// Undergrads can use the built-in barriers in pthreads.
-
 // Call MyBarrier_Init once in main
 void MyBarrier_Init()// you will likely need some parameters)
 {
+  count = N_THREADS;
+
+  // Initialize the mutex used for MyBarrier()
+  pthread_mutex_init(&countMutex, 0);
+  
+  // Create and initialize the localSense array, 1 entry per thread
+  localSense = new bool[N_THREADS];
+  for (int i = 0; i < N_THREADS; ++i) localSense[i] = true;
+
+  // Initialize global sense
+  globalSense = true;
+}
+
+int FetchAndDecrementCount()
+{ // We don’t have an atomic FetchAndDecrement, but we can get the
+  // same behavior by using a mutex
+  pthread_mutex_lock(&countMutex);
+  int myCount = count;
+  count--;
+  pthread_mutex_unlock(&countMutex);
+  return myCount;
 }
 
 // Each thread calls MyBarrier after completing the row-wise DFT
-void MyBarrier() // Again likely need parameters
+void MyBarrier(unsigned threadId) // Again likely need parameters
 {
+  localSense[threadId] = !localSense[threadId]; // Toggle private sense variable
+  if (FetchAndDecrementCount() == 1)
+  { // All threads here, reset count and toggle global sense
+    count = N_THREADS;
+    globalSense = localSense[threadId];
+  }
+  else
+  {
+    while (globalSense != localSense[threadId]) { } // Spin
+  }
 }
                     
 void precomputeW(int inverse)
@@ -98,7 +133,7 @@ void Transform1D(Complex* h, int N)
     }
   }
  
- /* Danielson-Lanczos Algorithm */
+  /* Danielson-Lanczos Algorithm */
   for(int pt=2; pt <= N; pt*=2)
     for(int j=0; j < (N); j+=pt)
       for(int k=0; k < (pt/2); k++){
@@ -113,13 +148,6 @@ void Transform1D(Complex* h, int N)
     for(int i=0; i<N; i++){
       // If inverse, then divide by N
       h[i] = Complex(1/(float)(N))*h[i];
-      //h[j+k] = Complex(1/sqrt(N))*h[j+k];
-      //h[j+k+offset] = Complex(1/sqrt(N))*h[j+k+offset];
-
-      //h[j+k].imag = (1/(float)(ImageWidth))*h[j+k].imag;
-
-      //h[j+k+offset].real = (1/ /*sqrt*/(float)(ImageWidth))*h[j+k+offset].real;
-      //h[j+k+offset].imag = (1/ /*sqrt*/(float)(ImageWidth))*h[j+k+offset].imag;
     }
   }
 }
@@ -308,7 +336,7 @@ void Transform2D(const char* inputFN)
   cout<<"  Transpose done"<<endl;
 
   // Write the transformed data
-  image.SaveImageData("Intermediate.txt", ImageData, ImageWidth, ImageHeight);
+  image.SaveImageData("MyAfterInverse.txt", ImageData, ImageWidth, ImageHeight);
   cout<<"  2-D inverse of Tower.txt done"<<endl;
 
 }
