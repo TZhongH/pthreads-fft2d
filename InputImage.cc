@@ -61,7 +61,11 @@ void InputImage::SaveImageData(const char* newFileName, Complex* d,
     { // for each row
       for (int c = 0; c < w; ++c)
         { // for each column
-          ofs << d[r * w + c].Mag() << " ";
+          Complex mag = d[r * w + c].Mag();
+          if(mag.real > 1e-5)
+            ofs << mag.real << " ";
+          else
+            ofs << 0 << " ";
         }
       ofs << endl;
     }

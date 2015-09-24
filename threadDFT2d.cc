@@ -23,6 +23,10 @@ int ImageHeight;
 
 #define N_THREADS 16
 
+#define FORWARD 1
+#define INVERSE -1
+int inverse = FORWARD;
+
 int N=1024; // Number of points in the 1-D transform
 
 // pThreads variables
@@ -67,14 +71,14 @@ void MyBarrier() // Again likely need parameters
 {
 }
                     
-void precomputeW()
+void precomputeW(int inverse)
 {
   W = new Complex[ImageWidth]; 
 
   /* Compute W only for first half */
   for(int n=0; n<(ImageWidth/2); n++){
     W[n].real = cos(2*M_PI*n/ImageWidth);
-    W[n].imag = -sin(2*M_PI*n/ImageWidth);
+    W[n].imag = -inverse*sin(2*M_PI*n/ImageWidth);
   }
 }
 
@@ -104,6 +108,20 @@ void Transform1D(Complex* h, int N)
         h[j+k] = oldfirst + W[k*N/pt]*oldsecond;
         h[j+k+offset] = oldfirst - W[k*N/pt]*oldsecond;
       }
+
+  if(inverse == INVERSE){
+    for(int i=0; i<N; i++){
+      // If inverse, then divide by N
+      h[i] = Complex(1/(float)(N))*h[i];
+      //h[j+k] = Complex(1/sqrt(N))*h[j+k];
+      //h[j+k+offset] = Complex(1/sqrt(N))*h[j+k+offset];
+
+      //h[j+k].imag = (1/(float)(ImageWidth))*h[j+k].imag;
+
+      //h[j+k+offset].real = (1/ /*sqrt*/(float)(ImageWidth))*h[j+k+offset].real;
+      //h[j+k+offset].imag = (1/ /*sqrt*/(float)(ImageWidth))*h[j+k+offset].imag;
+    }
+  }
 }
 
 void* Transform2DTHread(void* v)
@@ -126,7 +144,6 @@ void* Transform2DTHread(void* v)
  
   for(int row=startingRow; row < (startingRow + rowsPerThread); row++){
     Transform1D(&ImageData[row * ImageWidth], N);
-    cout<<". ";
   }
   cout<<endl<<endl;
 
@@ -172,7 +189,7 @@ void Transform2D(const char* inputFN)
   ImageData = image.GetImageData();
 
   // Precompute W values
-  precomputeW();
+  precomputeW(FORWARD);
 
   /* Perform the 1-D transform on all rows */
   //for(int row=0; row < ImageWidth; row++){
@@ -215,7 +232,6 @@ void Transform2D(const char* inputFN)
   
   startCount = N_THREADS;
   /* Do 1-D transform again */
-  //pthread_mutex_lock(&exitMutex);
   // Create 16 threads
   for(i=0; i < N_THREADS; ++i){
     pthread_create(&threads[i], 0, Transform2DTHread, (void *)i);
@@ -238,6 +254,62 @@ void Transform2D(const char* inputFN)
   // Write the transformed data
   image.SaveImageData("Tower-DFT2D.txt", ImageData, ImageWidth, ImageHeight);
   cout<<"  2-D transform of Tower.txt done"<<endl;
+  
+  //-------------------------------------------------------------------------
+  //-------------------------------------------------------------------------
+  
+  /* Calculate Inverse */
+
+  // Precompute W values
+  precomputeW(INVERSE);
+  inverse = INVERSE;
+  startCount = N_THREADS;
+  /* Do 1-D transform again */
+  // Create 16 threads
+  for(i=0; i < N_THREADS; ++i){
+    pthread_create(&threads[i], 0, Transform2DTHread, (void *)i);
+  }
+
+  // Wait for all threads complete
+  pthread_cond_wait(&exitCond, &exitMutex);
+
+  cout<<"Here!"<<endl;
+  
+  /* Transpose the 1-D transformed image */
+  for(int row=0; row<N; row++)
+    for(int column=0; column<N; column++){
+      if(column < row){
+        Complex temp; temp = ImageData[row*N + column];
+        ImageData[row*N + column] = ImageData[column*N + row];
+        ImageData[column*N + row] = temp;
+      }
+    }
+  cout<<"  Transpose done"<<endl;
+
+  startCount = N_THREADS;
+  /* Do 1-D transform again */
+  // Create 16 threads
+  for(i=0; i < N_THREADS; ++i){
+    pthread_create(&threads[i], 0, Transform2DTHread, (void *)i);
+  }
+
+  // Wait for all threads complete
+  pthread_cond_wait(&exitCond, &exitMutex);
+
+  /* Transpose the 1-D transformed image */
+  for(int row=0; row<N; row++)
+    for(int column=0; column<N; column++){
+      if(column < row){
+        Complex temp; temp = ImageData[row*N + column];
+        ImageData[row*N + column] = ImageData[column*N + row];
+        ImageData[column*N + row] = temp;
+      }
+    }
+  cout<<"  Transpose done"<<endl;
+
+  // Write the transformed data
+  image.SaveImageData("Intermediate.txt", ImageData, ImageWidth, ImageHeight);
+  cout<<"  2-D inverse of Tower.txt done"<<endl;
 
 }
 
