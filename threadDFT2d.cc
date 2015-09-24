@@ -193,6 +193,7 @@ void* Transform2DTHread(void* v)
   // /* -------- */ {
   // /* -------- */   pthread_mutex_unlock(&startCountMutex);
   // /* -------- */ }
+
   MyBarrier(thread_id);
 
   return 0; 
