@@ -23,27 +23,25 @@ int ImageHeight;
 
 #define N_THREADS 16
 
-#define FORWARD 1
-#define INVERSE -1
+#define FORWARD   1
+#define INVERSE  -1
+
 int inverse = FORWARD;
 
-int N=1024; // Number of points in the 1-D transform
+int N = 1024;                 // Number of points in the 1-D transform
 
-// pThreads variables
-pthread_mutex_t startCountMutex;    // To test how pThreads works
-pthread_mutex_t exitMutex;          // To test how pThreads works
-pthread_mutex_t elementCountMutex;  // To test how pThreads works
-pthread_mutex_t printfMutex;        // To test how pThreads works
-pthread_cond_t  exitCond;           // To test how pThreads works
-int             startCount;         // To test how pThreads works
+/* pThreads variables */
+pthread_mutex_t exitMutex;    // For exitcond
+pthread_mutex_t printfMutex;  // Not sure if mutex is reqd for printf
+pthread_cond_t  exitCond;     // Project req demands its existence
 
-Complex* W;     // Twiddle bits
+Complex* W;                   // Twiddle factors
 
-/* Variables for our own barrier */
-int count;        //Number of threads presently in the barrier
+/* Variables for MyBarrier */
+int             count;        // Number of threads presently in the barrier
 pthread_mutex_t countMutex;
-bool* localSense; // We will create an array of bools, one per thread
-bool globalSense; // Global sense
+bool*           localSense;   // We will create an array of bools, one per thread
+bool            globalSense;  // Global sense
 
 using namespace std;
 
@@ -70,20 +68,22 @@ void MyBarrier_Init()// you will likely need some parameters)
 {
   count = N_THREADS + 1;
 
-  // Initialize the mutex used for MyBarrier()
+  /* Initialize the mutex used for MyBarrier() */
   pthread_mutex_init(&countMutex, 0);
   
-  // Create and initialize the localSense array, 1 entry per thread
+  /* Create and initialize the localSense array, 1 entry per thread */
   localSense = new bool[N_THREADS + 1];
   for (int i = 0; i < (N_THREADS + 1); ++i) localSense[i] = true;
 
-  // Initialize global sense
+  /* Initialize global sense */
   globalSense = true;
 }
 
 int FetchAndDecrementCount()
-{ // We don’t have an atomic FetchAndDecrement, but we can get the
-  // same behavior by using a mutex
+{ 
+  /* We don’t have an atomic FetchAndDecrement, but we can get the */
+  /* same behavior by using a mutex */
+  
   pthread_mutex_lock(&countMutex);
   int myCount = count;
   count--;
@@ -92,7 +92,7 @@ int FetchAndDecrementCount()
 }
 
 // Each thread calls MyBarrier after completing the row-wise DFT
-void MyBarrier(unsigned threadId) // Again likely need parameters
+void MyBarrier(unsigned threadId) 
 {
   localSense[threadId] = !localSense[threadId]; // Toggle private sense variable
   if (FetchAndDecrementCount() == 1)
@@ -166,35 +166,18 @@ void* Transform2DTHread(void* v)
   int rowsPerThread = ImageHeight / N_THREADS;
   int startingRow = thread_id * rowsPerThread;
 
-  //pthread_mutex_lock(&elementCountMutex);
-  //test_variable++;
-  //pthread_mutex_unlock(&elementCountMutex);
- 
   for(int row=startingRow; row < (startingRow + rowsPerThread); row++){
     Transform1D(&ImageData[row * ImageWidth], N);
   }
-  cout<<endl<<endl;
 
   pthread_mutex_lock(&printfMutex);
-  printf("  Thread %2ld: My chunk is done!' \n", thread_id);
+  printf("  Thread %2ld: My part is done! \n", thread_id);
   pthread_mutex_unlock(&printfMutex);
 
-  // /* -------- */  pthread_mutex_lock(&startCountMutex);
-  // /* -------- */  startCount--;
-
-  // /* -------- */ if (startCount == 0)
-  // /* -------- */ { // Last to exit, notify calling function
-  // /* -------- */   pthread_mutex_unlock(&startCountMutex);
-  // /* -------- */   pthread_mutex_lock(&exitMutex);
-  // /* -------- */   pthread_cond_signal(&exitCond);
-  // /* -------- */   pthread_mutex_unlock(&exitMutex);
-  // /* -------- */ }
-  // /* -------- */ else
-  // /* -------- */ {
-  // /* -------- */   pthread_mutex_unlock(&startCountMutex);
-  // /* -------- */ }
-
+  /* Call barrier */
   MyBarrier(thread_id);
+  
+  /* Trigger cond_wait */
   if(thread_id == 5){
     pthread_mutex_lock(&exitMutex);
     pthread_cond_signal(&exitCond);
@@ -208,16 +191,12 @@ void Transform2D(const char* inputFN)
 { 
   /* Do the 2D transform here. */
 
-  InputImage image(inputFN);  // Create the helper object for reading the image
+  InputImage image(inputFN);        // Read in the image
   ImageWidth = image.GetWidth();
   ImageHeight = image.GetHeight();
 
-  cout<<"w = "<<ImageWidth<<" and h = "<<ImageHeight<<endl;
-
-  // All mutex and condition variables must be "initialized"
+  // All mutex and condition variables must be initialized
   pthread_mutex_init(&exitMutex,0);
-  pthread_mutex_init(&startCountMutex,0);
-  pthread_mutex_init(&elementCountMutex,0);
   pthread_mutex_init(&printfMutex,0);
   pthread_cond_init(&exitCond, 0);
 
@@ -227,35 +206,25 @@ void Transform2D(const char* inputFN)
   // Precompute W values
   precomputeW(FORWARD);
 
-  /* Perform the 1-D transform on all rows */
-  //for(int row=0; row < ImageWidth; row++){
-  //  Transform1D(&ImageData[row * ImageWidth], N);
-  //  cout<<". ";
-  //}
-  //cout<<endl<<endl;
-
   // Hold the exit mutex until waiting for exitCond condition
   pthread_mutex_lock(&exitMutex);
+
   /* Init the Barrier stuff */
   MyBarrier_Init();
 
-  startCount = N_THREADS;
-  
+  /* Declare the threads */
   pthread_t threads[N_THREADS];
 
-  int i = 0;
+  int i = 0;  // The humble omnipresent loop variable
 
   // Create 16 threads
   for(i=0; i < N_THREADS; ++i){
     pthread_create(&threads[i], 0, Transform2DTHread, (void *)i);
   }
 
-  // Wait for all threads complete
-  // /* -------- */  pthread_cond_wait(&exitCond, &exitMutex);
-
   // Write the transformed data
   image.SaveImageData("MyAfter1d.txt", ImageData, ImageWidth, ImageHeight);
-  cout<<"  1-D transform of Tower.txt done"<<endl;
+  cout<<"\n1-D transform of Tower.txt done"<<endl;
   MyBarrier(N_THREADS);
 
   /* Transpose the 1-D transformed image */
@@ -267,7 +236,7 @@ void Transform2D(const char* inputFN)
         ImageData[column*N + row] = temp;
       }
     }
-  cout<<"  Transpose done"<<endl;
+  cout<<"Transpose done"<<endl<<endl;
   
   // /* -------- */  startCount = N_THREADS;
   /* Do 1-D transform again */
@@ -289,11 +258,11 @@ void Transform2D(const char* inputFN)
         ImageData[column*N + row] = temp;
       }
     }
-  cout<<"  Transpose done"<<endl;
+  cout<<"\nTranspose done"<<endl;
 
   // Write the transformed data
   image.SaveImageData("Tower-DFT2D.txt", ImageData, ImageWidth, ImageHeight);
-  cout<<"  2-D transform of Tower.txt done"<<endl;
+  cout<<"2-D transform of Tower.txt done"<<endl<<endl;
   
   //-------------------------------------------------------------------------
   //-------------------------------------------------------------------------
@@ -314,8 +283,6 @@ void Transform2D(const char* inputFN)
   MyBarrier(N_THREADS);
   pthread_cond_wait(&exitCond, &exitMutex);
 
-  cout<<"Here!"<<endl;
-  
   /* Transpose the 1-D transformed image */
   for(int row=0; row<N; row++)
     for(int column=0; column<N; column++){
@@ -325,7 +292,7 @@ void Transform2D(const char* inputFN)
         ImageData[column*N + row] = temp;
       }
     }
-  cout<<"  Transpose done"<<endl;
+  cout<<"\nTranspose done\n"<<endl;
 
   // /* -------- */  startCount = N_THREADS;
   /* Do 1-D transform again */
@@ -347,18 +314,18 @@ void Transform2D(const char* inputFN)
         ImageData[column*N + row] = temp;
       }
     }
-  cout<<"  Transpose done"<<endl;
+  cout<<"\nTranspose done"<<endl;
 
   // Write the transformed data
   image.SaveImageData("MyAfterInverse.txt", ImageData, ImageWidth, ImageHeight);
-  cout<<"  2-D inverse of Tower.txt done"<<endl;
-
+  cout<<"2-D inverse of Tower.txt done\n"<<endl;
 }
 
 int main(int argc, char** argv)
 {
-  string fn("Tower.txt"); // default file name
-  if (argc > 1) fn = string(argv[1]);  // if name specified on cmd line
+  string fn("Tower.txt");               // default file name
 
-  Transform2D(fn.c_str()); // Perform the transform.
+  if (argc > 1) fn = string(argv[1]);   // if name specified on cmd line
+
+  Transform2D(fn.c_str());              // Perform the transform.
 }  
